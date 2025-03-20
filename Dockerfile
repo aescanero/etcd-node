@@ -2,24 +2,42 @@
 FROM golang:1.23-alpine AS builder
 
 # Versión de etcd a usar
-ARG ETCD_VERSION=v3.5.11
+ARG ETCD_VERSION=v3.5.17
 
 # Instalar dependencias necesarias
 RUN apk add --no-cache curl tar bash
 
 # Descargar y extraer etcd
-RUN curl -L https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz -o etcd.tar.gz && \
+# TARGETARCH es proporcionado automáticamente por BuildKit
+ARG TARGETARCH
+# TARGETPLATFORM es proporcionado automáticamente por BuildKit
+ARG TARGETPLATFORM
+
+# Instalar dependencias necesarias
+RUN apk add --no-cache curl tar bash
+
+# Configurar la arquitectura para la descarga
+RUN case "${TARGETARCH}" in \
+        "amd64")  ETCD_ARCH="amd64" ;; \
+        "arm64")  ETCD_ARCH="arm64" ;; \
+        "arm")    ETCD_ARCH="arm-v7" ;; \
+        "ppc64le") ETCD_ARCH="ppc64le" ;; \
+        "s390x")  ETCD_ARCH="s390x" ;; \
+        *)        echo "Arquitectura no soportada: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    echo "Descargando etcd para arquitectura: ${ETCD_ARCH}" && \
+    curl -L https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-${ETCD_ARCH}.tar.gz -o etcd.tar.gz && \
     tar xzvf etcd.tar.gz && \
-    mv etcd-${ETCD_VERSION}-linux-amd64/etcd /go/bin/ && \
-    mv etcd-${ETCD_VERSION}-linux-amd64/etcdctl /go/bin/ && \
-    rm -rf etcd-${ETCD_VERSION}-linux-amd64 etcd.tar.gz
+    mv etcd-${ETCD_VERSION}-linux-${ETCD_ARCH}/etcd /go/bin/ && \
+    mv etcd-${ETCD_VERSION}-linux-${ETCD_ARCH}/etcdctl /go/bin/ && \
+    rm -rf etcd-${ETCD_VERSION}-linux-${ETCD_ARCH} etcd.tar.gz
 
 WORKDIR /go/src/app
 COPY . .
 RUN go build -o etcd-node
 
 # Final Stage
-FROM alpine:3.18
+FROM alpine:3.21
 
 # Instalar dependencias necesarias
 RUN apk add --no-cache ca-certificates tzdata bash
