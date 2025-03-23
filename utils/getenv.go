@@ -14,11 +14,22 @@ limitations under the License.*/
 
 package utils
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 func GetEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
 	}
 	return fallback
+}
+
+func GetEnvAsInt(name string, defaultVal int) int {
+	valueStr := GetEnv(name, "")
+	if value, err := strconv.Atoi(valueStr); err == nil {
+		return value
+	}
+	return defaultVal
 }
