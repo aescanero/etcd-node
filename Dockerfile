@@ -40,12 +40,12 @@ RUN go build -o etcd-node
 FROM alpine:3.21
 
 # Instalar dependencias necesarias
-RUN apk add --no-cache ca-certificates tzdata bash
+RUN apk add --no-cache ca-certificates tzdata bash curl
 
 # Copiar binarios desde el builder
 COPY --from=builder /go/bin/etcd /usr/local/bin/
 COPY --from=builder /go/bin/etcdctl /usr/local/bin/
-COPY --from=builder /go/src/app/bootstrap /usr/local/bin/
+COPY --from=builder /go/src/app/etcd-node /etcd-node
 
 # Crear directorios necesarios para etcd
 RUN mkdir -p /var/run/etcd && \
@@ -66,3 +66,4 @@ EXPOSE 2379 2380
 WORKDIR /var/lib/etcd
 
 ENTRYPOINT ["/etcd-node"]
+CMD ["start"]
