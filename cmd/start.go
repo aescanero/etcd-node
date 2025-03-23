@@ -22,7 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aescanero/etcd-node/bootstrap"
+	"github.com/aescanero/etcd-node/api"
+	"github.com/aescanero/etcd-node/client"
 	"github.com/aescanero/etcd-node/config"
 	"github.com/aescanero/etcd-node/service"
 	"github.com/aescanero/etcd-node/utils"
@@ -60,6 +61,12 @@ var (
 
 	ReadUser     string = utils.GetEnv("ETCD_READ_USER", "read")
 	ReadPassword string = utils.GetEnv("ETCD_READ_PASSWORD", "read")
+
+	// Variables for health API
+	HealthAPIEnabled  bool   = utils.GetEnv("ETCD_HEALTH_API_ENABLED", "true") == "true"
+	HealthAPIAddress  string = utils.GetEnv("ETCD_HEALTH_API_ADDRESS", ":8080")
+	HealthCheckPeriod int    = utils.GetEnvAsInt("ETCD_HEALTH_CHECK_PERIOD", 10) // seconds
+	EtcdDataDir       string = utils.GetEnv("ETCD_DATA_DIR", "/var/lib/etcd")
 )
 
 func init() {
@@ -130,31 +137,54 @@ var startCmd = &cobra.Command{
 			ReadPassword: ReadPassword,
 		}
 
-		client, err := bootstrap.NewClient(&myConfig)
-		if err != nil {
-			log.Fatalf("Error creating bootstrap client: %v", err)
-		}
-		defer client.Close()
-
-		// Verificar si se necesita bootstrap
-		needsBootstrap, err := client.NeedsBootstrap(context.Background())
-		if err != nil {
-			log.Fatalf("Error checking bootstrap status: %v", err)
-		}
-
-		if needsBootstrap {
-			if err := client.Bootstrap(context.Background()); err != nil {
-				log.Fatalf("Error during bootstrap: %v", err)
-			}
-			log.Println("Bootstrap completado exitosamente")
-		} else {
-			log.Println("El servidor ya está configurado")
-		}
-
+		// Start etcd server
 		app := service.NewLauncher(myConfig)
 		if err := app.Start(); err != nil {
 			log.Fatalf("Error starting etcd: %v", err)
 		}
+		log.Println("Etcd started successfully")
+
+		// Get etcd process ID for health monitoring
+		etcdPid := app.GetProcessID()
+
+		// Create bootstrap client
+		client, err := client.NewClient(&myConfig)
+		if err != nil {
+			log.Fatalf("Error creating bootstrap client: %v", err)
+		}
+		log.Println("Bootstrap client created")
+		defer client.Close()
+
+		// Check if bootstrap is needed using non-blocking method
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		needsBootstrap, err := client.NeedsBootstrap(ctx, etcdPid)
+		cancel()
+
+		if err != nil {
+			log.Printf("Bootstrap check warning: %v", err)
+		}
+
+		if needsBootstrap {
+			bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 60*time.Second)
+			if err := client.Bootstrap(bootstrapCtx); err != nil {
+				bootstrapCancel()
+				log.Fatalf("Error during bootstrap: %v", err)
+			}
+			bootstrapCancel()
+			log.Println("Bootstrap completed successfully")
+		} else {
+			log.Println("Server is already configured")
+		}
+
+		// Start health API server if enabled
+		var healthServer *api.HealthServer
+		if HealthAPIEnabled {
+			healthServer = api.NewHealthServer(client, &myConfig, etcdPid, EtcdDataDir)
+			healthServer.StartMonitoring(time.Duration(HealthCheckPeriod) * time.Second)
+			healthServer.StartAsync(HealthAPIAddress)
+			log.Printf("Health API server started on %s", HealthAPIAddress)
+		}
+
 		statusChan := app.Monitor(5 * time.Second)
 
 		sigChan := make(chan os.Signal, 1)
