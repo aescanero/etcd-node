@@ -87,6 +87,10 @@ type Config struct {
 	AdvertiseClientURLs      string `env:"ETCD_ADVERTISE_CLIENT_URLS"`
 	ListenClientURLs         string `env:"ETCD_LISTEN_CLIENT_URLS"`
 
+	//Storage Configuration
+	DataDir      string `env:"ETCD_DATA_DIR" default:"/var/run/etcd"`
+	MaxSnapshots string `env:"ETCD_MAX_SNAPSHOTS" default:"5"`
+
 	// Performance Configuration
 	AutoCompactionRetention string `env:"ETCD_AUTO_COMPACTION_RETENTION"`
 	QuotaBackendBytes       string `env:"ETCD_QUOTA_BACKEND_BYTES"`
@@ -148,28 +152,93 @@ func (c *Config) BuildArgs() []string {
 	}
 
 	// TLS Configuration
-	addArg("cert-file", c.CertFile)
-	addArg("key-file", c.KeyFile)
-	addArg("trusted-ca-file", c.TrustedCAFile)
-	addArg("peer-cert-file", c.PeerCertFile)
-	addArg("peer-key-file", c.PeerKeyFile)
-	addArg("peer-trusted-ca-file", c.PeerTrustedCAFile)
-	addArg("client-cert-auth", c.ClientCertAuth)
-	addArg("peer-client-cert-auth", c.PeerClientCertAuth)
+	if os.Getenv("ETCD_CERT_FILE") == "" {
+		addArg("cert-file", c.CertFile)
+	}
+	if os.Getenv("ETCD_KEY_FILE") == "" {
+		addArg("key-file", c.KeyFile)
+	}
+	if os.Getenv("ETCD_TRUSTED_CA_FILE") == "" {
+		addArg("trusted-ca-file", c.TrustedCAFile)
+	}
+	if os.Getenv("ETCD_PEER_CERT_FILE") == "" {
+		addArg("peer-cert-file", c.PeerCertFile)
+	}
+	if os.Getenv("ETCD_PEER_KEY_FILE") == "" {
+		addArg("peer-key-file", c.PeerKeyFile)
+	}
+	if os.Getenv("ETCD_PEER_TRUSTED_CA_FILE") == "" {
+		addArg("peer-trusted-ca-file", c.PeerTrustedCAFile)
+	}
+	if os.Getenv("ETCD_CLIENT_CERT_AUTH") == "" {
+		addArg("client-cert-auth", c.ClientCertAuth)
+	}
+	if os.Getenv("ETCD_PEER_CLIENT_CERT_AUTH") == "" {
+		addArg("peer-client-cert-auth", c.PeerClientCertAuth)
+	}
 
 	// Node Configuration
-	addArg("name", c.Name)
-	addArg("initial-cluster-state", c.InitialClusterState)
-	addArg("initial-cluster-token", c.InitialClusterToken)
-	addArg("initial-cluster", c.InitialCluster)
-	addArg("initial-advertise-peer-urls", c.InitialAdvertisePeerURLs)
-	addArg("listen-peer-urls", c.ListenPeerURLs)
-	addArg("advertise-client-urls", c.AdvertiseClientURLs)
-	addArg("listen-client-urls", c.ListenClientURLs)
+	if os.Getenv("ETCD_NAME") == "" {
+		addArg("name", c.Name)
+	}
+	if os.Getenv("ETCD_INITIAL_CLUSTER_STATE") == "" {
+		addArg("initial-cluster-state", c.InitialClusterState)
+	}
+	if os.Getenv("ETCD_INITIAL_CLUSTER_TOKEN") == "" {
+		addArg("initial-cluster-token", c.InitialClusterToken)
+	}
+	if os.Getenv("ETCD_INITIAL_CLUSTER") == "" {
+		addArg("initial-cluster", c.InitialCluster)
+	}
+	if os.Getenv("ETCD_INITIAL_ADVERTISE_PEER_URLS") == "" {
+		addArg("advertise-peer-urls", c.InitialAdvertisePeerURLs)
+	}
+	if os.Getenv("ETCD_LISTEN_PEER_URLS") == "" {
+		addArg("listen-peer-urls", c.ListenPeerURLs)
+	}
+	if os.Getenv("ETCD_ADVERTISE_CLIENT_URLS") == "" {
+		addArg("advertise-client-urls", c.AdvertiseClientURLs)
+	}
+	if os.Getenv("ETCD_LISTEN_CLIENT_URLS") == "" {
+		addArg("listen-client-urls", c.ListenClientURLs)
+	}
+	if os.Getenv("ETCD_AUTO_COMPACTION_RETENTION") == "" {
+		addArg("auto-compaction-retention", c.AutoCompactionRetention)
+	}
+	if os.Getenv("ETCD_QUOTA_BACKEND_BYTES") == "" {
+		addArg("quota-backend-bytes", c.QuotaBackendBytes)
+	}
 
-	// Performance Configuration
-	addArg("auto-compaction-retention", c.AutoCompactionRetention)
-	addArg("quota-backend-bytes", c.QuotaBackendBytes)
+	if os.Getenv("ETCD_DATA_DIR") == "" {
+		addArg("data-dir", c.DataDir)
+	}
 
+	ListDataDir(c.DataDir)
 	return args
+}
+
+// Function to print ETCD_DATA_DIR value and list files in that directory
+func ListDataDir(dataDir string) error {
+	// Print the data directory path
+	fmt.Printf("ETCD_DATA_DIR: %s\n", dataDir)
+
+	// Read directory contents
+	files, err := os.ReadDir(dataDir)
+	if err != nil {
+		return fmt.Errorf("error reading directory %s: %v", dataDir, err)
+	}
+
+	// Print list of files
+	fmt.Println("Files in directory:")
+	for _, file := range files {
+		info, err := file.Info()
+		if err != nil {
+			return fmt.Errorf("error getting file info for %s: %v", file.Name(), err)
+		}
+
+		// Print file name and permissions
+		fmt.Printf("- %s (mode: %v)\n", file.Name(), info.Mode())
+	}
+
+	return nil
 }
