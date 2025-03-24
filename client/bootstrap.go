@@ -144,6 +144,8 @@ func (c *Client) NeedsBootstrap(ctx context.Context, pid int) (bool, error) {
 	if err != nil {
 		if err.Error() == "etcdserver: authentication is not enabled" {
 			authEnabled = false
+		} else if err.Error() == "etcdserver: user name is empty" {
+			authEnabled = false
 		} else if err.Error() == "etcdserver: user name and password required" {
 			authEnabled = true
 		} else {
