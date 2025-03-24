@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -67,6 +68,8 @@ var (
 	HealthAPIAddress  string = utils.GetEnv("ETCD_HEALTH_API_ADDRESS", ":8080")
 	HealthCheckPeriod int    = utils.GetEnvAsInt("ETCD_HEALTH_CHECK_PERIOD", 10) // seconds
 	EtcdDataDir       string = utils.GetEnv("ETCD_DATA_DIR", "/var/lib/etcd")
+
+	DeploymentModel string = utils.GetEnv("ETCD_DEPLOYMENT_MODEL", "kubernetes")
 )
 
 func init() {
@@ -155,13 +158,18 @@ var startCmd = &cobra.Command{
 		log.Println("Bootstrap client created")
 		defer client.Close()
 
-		// Check if bootstrap is needed using non-blocking method
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		needsBootstrap, err := client.NeedsBootstrap(ctx, etcdPid)
-		cancel()
+		needsBootstrap := false
 
-		if err != nil {
-			log.Printf("Bootstrap check warning: %v", err)
+		if DeploymentModel == "kubernetes" && !strings.HasSuffix(Name, "-0") {
+			needsBootstrap = false
+		} else {
+			// Check if bootstrap is needed using non-blocking method
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			needsBootstrap, err = client.NeedsBootstrap(ctx, etcdPid)
+			cancel()
+			if err != nil {
+				log.Fatalf("Bootstrap check failed: %v", err)
+			}
 		}
 
 		if needsBootstrap {
