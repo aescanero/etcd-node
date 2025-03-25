@@ -9,31 +9,37 @@ import (
 	"github.com/aescanero/etcd-node/client"
 	"github.com/aescanero/etcd-node/config"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// HealthServer provides an HTTP API to monitor etcd health
+// HealthServer proporciona una API HTTP para monitorizar la salud de etcd
 type HealthServer struct {
-	etcdClient    *client.Client
-	router        *gin.Engine
-	config        *config.Config
-	processID     int
-	dataDir       string
-	currentHealth *client.EtcdHealth
-	mutex         sync.RWMutex
-	updateTicker  *time.Ticker
-	stopChan      chan struct{}
+	etcdClient       *client.Client
+	router           *gin.Engine
+	config           *config.Config
+	processID        int
+	dataDir          string
+	currentHealth    *client.EtcdHealth
+	mutex            sync.RWMutex
+	updateTicker     *time.Ticker
+	stopChan         chan struct{}
+	metricsCollector *MetricsCollector // Añadido: colector de métricas
 }
 
-// NewHealthServer creates a new health API server
+// NewHealthServer crea un nuevo servidor de API de salud
 func NewHealthServer(etcdClient *client.Client, cfg *config.Config, processID int, dataDir string) *HealthServer {
 	router := gin.Default()
 
+	// Crear el colector de métricas
+	metricsCollector := NewMetricsCollector(etcdClient, processID, dataDir)
+
 	server := &HealthServer{
-		etcdClient: etcdClient,
-		router:     router,
-		config:     cfg,
-		processID:  processID,
-		dataDir:    dataDir,
+		etcdClient:       etcdClient,
+		router:           router,
+		config:           cfg,
+		processID:        processID,
+		dataDir:          dataDir,
+		metricsCollector: metricsCollector, // Añadido: asignar el colector
 		currentHealth: &client.EtcdHealth{
 			ProcessRunning:    false,
 			IsSocketAvailable: false,
@@ -45,7 +51,7 @@ func NewHealthServer(etcdClient *client.Client, cfg *config.Config, processID in
 		stopChan: make(chan struct{}),
 	}
 
-	// Configure routes
+	// Configurar rutas
 	server.setupRoutes()
 
 	return server
@@ -61,6 +67,8 @@ func (s *HealthServer) setupRoutes() {
 
 	// GET /status returns status details including the EtcdHealth, plus system metrics
 	s.router.GET("/status", s.getStatus)
+
+	s.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 
 // getHealth returns the current health status
@@ -123,6 +131,7 @@ func (s *HealthServer) updateHealthStatus() {
 	}
 
 	s.currentHealth = health
+	s.metricsCollector.UpdateMetrics()
 }
 
 // StartMonitoring starts periodic health checks
